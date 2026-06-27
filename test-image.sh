@@ -94,12 +94,17 @@ else
     fail "kubelet cgroup driver drop-in missing"
 fi
 
-# ── 9. firewalld disabled ─────────────────────────────────────────────────────
+# ── 9. firewalld enabled & configured ─────────────────────────────────────────
 banner "firewalld"
 if run test -L /etc/systemd/system/multi-user.target.wants/firewalld.service 2>/dev/null; then
-    fail "firewalld is still enabled (symlink exists)"
+    ok "firewalld is enabled"
 else
-    ok "firewalld is not enabled"
+    fail "firewalld is not enabled"
+fi
+if run grep -q "port=\"6443\"" /etc/firewalld/zones/public.xml 2>/dev/null; then
+    ok "firewalld k8s ports configured"
+else
+    fail "firewalld k8s ports not configured"
 fi
 
 # ── Results ───────────────────────────────────────────────────────────────────

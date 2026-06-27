@@ -93,14 +93,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-# ── Job 2: Vulnerability scan ──────────────────────────────────────────────────
-  scan:
-    name: Vulnerability scan (Trivy)
+# ── Job 2: SBOM Generation (Syft) ──────────────────────────────────────────────
+  sbom:
+    name: Generate SBOM (Syft)
     needs: build-and-push
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      security-events: write
+      contents: write
+      actions: read
 
     steps:
       - name: Checkout repository
@@ -113,20 +113,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.28.0
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-          format: sarif
-          output: trivy-results.sarif
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          format: spdx-json
+          output-file: sbom.spdx.json
 
-      - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
+      - name: Upload SBOM as artifact
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: trivy-results.sarif
+          name: sbom-${{ github.sha }}
+          path: sbom.spdx.json
 
 # ── Job 3: Build QEMU disk image with bootc-image-builder ────────────────────
 # This validates that bootc-image-builder can successfully convert the container

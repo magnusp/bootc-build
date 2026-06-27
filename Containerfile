@@ -43,6 +43,7 @@ RUN dnf install -y --skip-unavailable \
         tar \
         curl \
         jq \
+        firewalld \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
@@ -70,8 +71,9 @@ RUN systemctl enable kubelet.service
 COPY k8s-sysctl.conf    /etc/sysctl.d/99-kubernetes.conf
 COPY k8s-modules.conf   /etc/modules-load.d/99-kubernetes.conf
 
-# ── 7. Firewall: disable firewalld – Cilium manages all policy via eBPF ───────
-RUN systemctl disable firewalld.service
+# ── 7. Firewall: configure firewalld for Kubernetes & Cilium ports ───────────
+COPY firewalld-public.xml /etc/firewalld/zones/public.xml
+RUN systemctl enable firewalld.service
 
 # ── 8. Persistent state directories ──────────────────────────────────────────
 RUN mkdir -p \
