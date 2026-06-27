@@ -143,6 +143,7 @@ jobs:
         with:
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.image-digest }}
           config-file: ./image-config.toml
+          rootfs: ext4
           types: |
             qcow2
 
