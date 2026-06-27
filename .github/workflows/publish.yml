@@ -8,6 +8,11 @@ on:
       - main
   workflow_dispatch:
 
+# Cancel in-progress runs when a new push is made to the same branch or pull request
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
