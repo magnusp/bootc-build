@@ -44,6 +44,8 @@ jobs:
 
       - name: Set up QEMU (multi-arch support)
         uses: docker/setup-qemu-action@v4
+        with:
+          cache-image: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -158,12 +160,3 @@ jobs:
           fi
           echo "PASS: qcow2 image found at $QCOW2"
           echo "Size: $(du -h "$QCOW2" | cut -f1)"
-
-      # Upload qcow2 as a workflow artifact (available for 7 days)
-      - name: Upload qcow2 artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: qcow2-disk-image-${{ github.sha }}
-          path: ${{ steps.build-qcow2.outputs.output-directory }}
-          if-no-files-found: error
-          retention-days: 7
