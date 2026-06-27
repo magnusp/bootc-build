@@ -29,7 +29,7 @@ jobs:
 
     outputs:
       # Pass the exact digest to the QEMU job so it pulls the right image
-      image-ref: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.push-image.outputs.digest }}
 
     steps:
       - name: Checkout repository
@@ -94,6 +94,7 @@ jobs:
 
       # Push to registry only on main branch (not PRs)
       - name: Push image to registry
+        id: push-image
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v7
         with:
@@ -140,7 +141,7 @@ jobs:
         id: build-qcow2
         uses: osbuild/bootc-image-builder-action@v0.0.2
         with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.image-digest }}
           config-file: ./image-config.toml
           types: |
             qcow2
