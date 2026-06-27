@@ -1,0 +1,14 @@
+[Unit]
+Description: Mount Local ZFS Dataset for Kubernetes CSI compatibility
+DefaultDependencies=no
+After=zfs-import.target
+Before=local-fs.target kubelet.service
+
+[Mount]
+What=rpool/k8s-local
+Where=/var/lib/democratic-csi
+Type=zfs
+Options=defaults
+
+[Install]
+WantedBy=multi-user.target

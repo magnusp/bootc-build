@@ -1,0 +1,15 @@
+# Control Plane Bootc Image
+FROM Containerfile.base
+
+# Mark this node type as control-plane
+RUN echo "node-type=control-plane" > /etc/node-type
+
+# Control Plane nodes run keeping etcd state or modern equivalents (K3s/kine or HA etcd stack).
+# Install Helm client in the control plane image to easily bootstrap Cilium and CSI plugins.
+RUN curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 && \
+    chmod 700 get_helm.sh && \
+    ./get_helm.sh && \
+    rm get_helm.sh
+
+# Run bootc lint to ensure the image meets specifications
+RUN bootc container lint

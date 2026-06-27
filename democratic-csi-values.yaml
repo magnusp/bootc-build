@@ -1,0 +1,24 @@
+# democratic-csi local-hostpath values.yaml example
+csiDriver:
+  name: "org.democratic-csi.local-hostpath"
+
+storageClasses:
+  - name: local-hostpath
+    defaultClass: true
+    reclaimPolicy: Delete
+    volumeBindingMode: WaitForFirstConsumer
+    # Node-local storage requires immediate scheduling lookup
+    allowVolumeExpansion: true
+    parameters:
+      # Use an ext4/xfs formatting layout over hostpath mounts
+      fsType: ext4
+
+# Configure node directory lookup
+driver:
+  config:
+    driver: local-hostpath
+    local-hostpath:
+      # Path on the host where volume directories will be provisioned
+      # This directory should be backed by ZFS in Proxmox or locally
+      shareBasePath: "/var/lib/democratic-csi/volumes"
+      controllerBasePath: "/var/lib/democratic-csi/volumes"
