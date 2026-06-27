@@ -62,7 +62,7 @@ jobs:
       # Build and load locally for tests (PR + push)
       - name: Build image (local, for testing)
         id: build-local
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Containerfile
@@ -95,7 +95,7 @@ jobs:
       # Push to registry only on main branch (not PRs)
       - name: Push image to registry
         if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Containerfile
