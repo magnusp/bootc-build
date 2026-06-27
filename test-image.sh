@@ -106,6 +106,23 @@ if run grep -q "port=\"6443\"" /etc/firewalld/zones/public.xml 2>/dev/null; then
 else
     fail "firewalld k8s ports not configured"
 fi
+# ── 10. bootc container lint warnings & errors ────────────────────────────────
+banner "bootc container lint warnings & errors"
+lint_output=$(run bootc container lint 2>&1 || true)
+echo "$lint_output"
+
+if echo "$lint_output" | grep -qi "error"; then
+    fail "bootc container lint returned errors!"
+else
+    # Filter out expected system warnings from DNF and open-iscsi packages in base image
+    unexpected_warnings=$(echo "$lint_output" | grep -vE "(iscsi|dnf|libdnf5|Checks passed|Checks skipped|Warnings:|Lint warning: var-tmpfiles|\.\.\.and [0-9]+ more)" | grep -v "^[[:space:]]*$" || true)
+    if [ -n "$unexpected_warnings" ]; then
+        fail "Unexpected bootc container lint warnings found: $unexpected_warnings"
+    else
+        ok "bootc container lint passed (0 unexpected warnings or errors)"
+    fi
+fi
+
 
 # ── Results ───────────────────────────────────────────────────────────────────
 echo
