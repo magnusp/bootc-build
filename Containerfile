@@ -52,7 +52,7 @@ RUN ARCH="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" && \
         -o /tmp/helm.tar.gz && \
     curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" \
         -o /tmp/helm.sha256 && \
-    (cd /tmp && sha256sum -c helm.sha256) && \
+    echo "$(cat /tmp/helm.sha256 | awk '{print $1}')  /tmp/helm.tar.gz" | sha256sum -c - && \
     tar -xzf /tmp/helm.tar.gz -C /tmp && \
     install -o root -g root -m 0755 "/tmp/linux-${ARCH}/helm" /usr/local/bin/helm && \
     rm -rf /tmp/helm.tar.gz /tmp/helm.sha256 "/tmp/linux-${ARCH}"

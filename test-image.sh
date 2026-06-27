@@ -6,8 +6,8 @@ set -euo pipefail
 PASS=0
 FAIL=0
 
-ok()   { echo "  PASS: $*"; ((PASS++)); }
-fail() { echo "  FAIL: $*"; ((FAIL++)); }
+ok()   { echo "  PASS: $*"; PASS=$((PASS + 1)); }
+fail() { echo "  FAIL: $*"; FAIL=$((FAIL + 1)); }
 
 banner() { echo; echo "── $* ──────────────────────────────────────"; }
 
