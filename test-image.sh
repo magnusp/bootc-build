@@ -1,69 +1,112 @@
 #!/usr/bin/env bash
-# Test suite for validated configurations inside built bootc images
+# Test suite for the built bootc node image.
+# Run via CI with IMAGE_NAME env var pointing to the loaded image tag.
 set -euo pipefail
 
+PASS=0
+FAIL=0
+
+ok()   { echo "  PASS: $*"; ((PASS++)); }
+fail() { echo "  FAIL: $*"; ((FAIL++)); }
+
+banner() { echo; echo "── $* ──────────────────────────────────────"; }
+
+run() { docker run --rm "$IMAGE_NAME" "$@"; }
+
 echo "=============================================="
-echo "Running bootc image tests..."
+echo "bootc image test suite"
+echo "Image: $IMAGE_NAME"
 echo "=============================================="
 
-# 1. Verify bootc labels
-echo "Testing bootc configuration labels..."
-bootc_compat=$(docker inspect --format='{{index .Config.Labels "containers.bootc"}}' "$IMAGE_NAME")
-if [ "$bootc_compat" != "1" ]; then
-    echo "FAIL: bootc compatibility label 'containers.bootc=1' not found!"
-    exit 1
+# ── 1. bootc compatibility label ──────────────────────────────────────────────
+banner "bootc label"
+label=$(docker inspect --format='{{index .Config.Labels "containers.bootc"}}' "$IMAGE_NAME" 2>/dev/null || true)
+if [ "$label" = "1" ]; then
+    ok "containers.bootc=1 label present"
+else
+    fail "containers.bootc=1 label missing (got: '$label')"
 fi
-echo "PASS: bootc compatibility label is valid."
 
-# 2. Check kernel config and modules directory
-echo "Verifying kernel presence..."
-if ! docker run --rm "$IMAGE_NAME" ls -d /usr/lib/modules/ > /dev/null 2>&1; then
-    echo "FAIL: /usr/lib/modules not found! Kernel is missing."
-    exit 1
+# ── 2. Kernel modules directory (from fedora-bootc base) ─────────────────────
+banner "Kernel"
+if run ls /usr/lib/modules/ > /dev/null 2>&1; then
+    ok "/usr/lib/modules/ present"
+else
+    fail "/usr/lib/modules/ missing – kernel not found"
 fi
-echo "PASS: Kernel modules directory is present."
 
-# 3. Check for mandatory binaries
-mandatory_binaries=("kubelet" "kubeadm" "kubectl" "containerd" "runc" "systemctl")
-for bin in "${mandatory_binaries[@]}"; do
-    echo "Checking binary: $bin..."
-    if ! docker run --rm "$IMAGE_NAME" which "$bin" > /dev/null 2>&1; then
-        echo "FAIL: Required binary '$bin' is not installed."
-        exit 1
+# ── 3. Mandatory binaries ─────────────────────────────────────────────────────
+banner "Required binaries"
+for bin in kubelet kubeadm kubectl containerd runc helm systemctl; do
+    if run which "$bin" > /dev/null 2>&1; then
+        ok "$bin found"
+    else
+        fail "$bin not found in PATH"
     fi
 done
-echo "PASS: All mandatory binaries are present."
 
-# 4. Check for kernel modules load configurations
-echo "Verifying kernel modules configurations..."
-required_modules=("br_netfilter" "overlay" "nf_conntrack")
-for mod in "${required_modules[@]}"; do
-    if ! docker run --rm "$IMAGE_NAME" grep -q "$mod" /etc/modules-load.d/99-kubernetes.conf; then
-        echo "FAIL: Module '$mod' configuration not found in /etc/modules-load.d/99-kubernetes.conf."
-        exit 1
+# ── 4. CNI plugin binaries ────────────────────────────────────────────────────
+banner "CNI plugins"
+if run ls /opt/cni/bin/ > /dev/null 2>&1; then
+    ok "/opt/cni/bin/ present with contents: $(run ls /opt/cni/bin/ | tr '\n' ' ')"
+else
+    fail "/opt/cni/bin/ missing – CNI plugins not installed"
+fi
+
+# ── 5. Kernel modules configuration ──────────────────────────────────────────
+banner "Kernel modules config"
+for mod in br_netfilter overlay nf_conntrack; do
+    if run grep -q "$mod" /etc/modules-load.d/99-kubernetes.conf 2>/dev/null; then
+        ok "module config: $mod"
+    else
+        fail "module config missing: $mod"
     fi
 done
-echo "PASS: Kernel modules configurations verified."
 
-# 5. Check for sysctl network tuning options
-echo "Verifying sysctl settings..."
-required_sysctl=("net.ipv4.ip_forward=1" "net.bridge.bridge-nf-call-iptables=1")
-for sys in "${required_sysctl[@]}"; do
-    if ! docker run --rm "$IMAGE_NAME" grep -q "${sys// /}" /etc/sysctl.d/99-kubernetes.conf; then
-        echo "FAIL: Sysctl setting '$sys' not found in /etc/sysctl.d/99-kubernetes.conf."
-        exit 1
+# ── 6. sysctl settings ────────────────────────────────────────────────────────
+banner "sysctl settings"
+for setting in "net.ipv4.ip_forward=1" "net.bridge.bridge-nf-call-iptables=1" "net.ipv6.conf.all.forwarding=1"; do
+    if run grep -q "$setting" /etc/sysctl.d/99-kubernetes.conf 2>/dev/null; then
+        ok "sysctl: $setting"
+    else
+        fail "sysctl missing: $setting"
     fi
 done
-echo "PASS: Sysctl configurations verified."
 
-# 6. Verify containerd config.toml systemd-cgroup setting
-echo "Verifying containerd cgroup configuration..."
-if ! docker run --rm "$IMAGE_NAME" grep -q "SystemdCgroup = true" /etc/containerd/config.toml; then
-    echo "FAIL: Containerd config does not have SystemdCgroup enabled."
+# ── 7. containerd config ──────────────────────────────────────────────────────
+banner "containerd config"
+if run grep -q "SystemdCgroup = true" /etc/containerd/config.toml 2>/dev/null; then
+    ok "SystemdCgroup = true"
+else
+    fail "SystemdCgroup not set in containerd config"
+fi
+if run grep -q "runc" /etc/containerd/config.toml 2>/dev/null; then
+    ok "runc runtime configured"
+else
+    fail "runc not referenced in containerd config"
+fi
+
+# ── 8. kubelet cgroup driver drop-in ─────────────────────────────────────────
+banner "kubelet cgroup driver"
+if run grep -q "systemd" /etc/systemd/system/kubelet.service.d/10-cgroupdriver.conf 2>/dev/null; then
+    ok "kubelet cgroup driver drop-in present"
+else
+    fail "kubelet cgroup driver drop-in missing"
+fi
+
+# ── 9. firewalld disabled ─────────────────────────────────────────────────────
+banner "firewalld"
+if run test -L /etc/systemd/system/multi-user.target.wants/firewalld.service 2>/dev/null; then
+    fail "firewalld is still enabled (symlink exists)"
+else
+    ok "firewalld is not enabled"
+fi
+
+# ── Results ───────────────────────────────────────────────────────────────────
+echo
+echo "=============================================="
+echo "Results: $PASS passed, $FAIL failed"
+echo "=============================================="
+if [ "$FAIL" -gt 0 ]; then
     exit 1
 fi
-echo "PASS: Containerd configuration verified."
-
-echo "=============================================="
-echo "ALL TESTS PASSED SUCCESSFULLY!"
-echo "=============================================="

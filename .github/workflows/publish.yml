@@ -1,4 +1,5 @@
 name: Build and Publish bootc Container Images
+
 on:
   push:
     branches:
@@ -8,7 +9,7 @@ on:
       - main
   workflow_dispatch:
 
-# Cancel in-progress runs when a new push is made to the same branch or pull request
+# Cancel in-progress runs for the same branch / PR
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -17,31 +18,37 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+# ── Job 1: Build, test, and publish the container image ───────────────────────
 jobs:
   build-and-push:
+    name: Build & Push container image
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
 
+    outputs:
+      # Pass the exact digest to the QEMU job so it pulls the right image
+      image-ref: ${{ steps.meta.outputs.tags }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Log in to the Container registry
+      - name: Log in to ghcr.io
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up QEMU
+      - name: Set up QEMU (multi-arch support)
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract metadata (tags, labels) for Docker
+      - name: Extract image metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -52,25 +59,28 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      - name: Build bootc image (local check only)
+      # Build and load locally for tests (PR + push)
+      - name: Build image (local, for testing)
+        id: build-local
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Containerfile
           platforms: linux/amd64
           load: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:test
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci-test
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Run containerized integration tests
+      - name: Run image tests
         env:
-          IMAGE_NAME: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:test
+          IMAGE_NAME: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci-test
         run: |
           chmod +x ./test-image.sh
           ./test-image.sh
 
-      - name: Push bootc image (to registry)
+      # Push to registry only on main branch (not PRs)
+      - name: Push image to registry
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
@@ -82,3 +92,98 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+# ── Job 2: Vulnerability scan ──────────────────────────────────────────────────
+  scan:
+    name: Vulnerability scan (Trivy)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+# ── Job 3: Build QEMU disk image with bootc-image-builder ────────────────────
+# This validates that bootc-image-builder can successfully convert the container
+# image into a bootable QEMU/qcow2 disk image – the final artefact used in Proxmox.
+  build-qemu-image:
+    name: Build QEMU disk image (bootc-image-builder)
+    needs: build-and-push
+    # Only run on pushes to main – skip on PRs to save runner time
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Free ~14 GB of disk space before the large qcow2 build
+      - name: Free up disk space on runner
+        run: |
+          sudo rm -rf /opt/hostedtoolcache /usr/local/lib/android /usr/share/dotnet
+          df -h
+
+      - name: Log in to ghcr.io (for bootc-image-builder to pull the source image)
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build qcow2 disk image
+        id: build-qcow2
+        uses: osbuild/bootc-image-builder-action@v1
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          config-file: ./image-config.toml
+          types: |
+            qcow2
+
+      - name: Verify qcow2 output exists
+        run: |
+          echo "=== Output directory ==="
+          ls -lh "${{ steps.build-qcow2.outputs.output-directory }}"
+          QCOW2=$(find "${{ steps.build-qcow2.outputs.output-directory }}" -name "*.qcow2" | head -1)
+          if [ -z "$QCOW2" ]; then
+            echo "FAIL: No .qcow2 file found in output directory"
+            exit 1
+          fi
+          echo "PASS: qcow2 image found at $QCOW2"
+          echo "Size: $(du -h "$QCOW2" | cut -f1)"
+
+      # Upload qcow2 as a workflow artifact (available for 7 days)
+      - name: Upload qcow2 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qcow2-disk-image-${{ github.sha }}
+          path: ${{ steps.build-qcow2.outputs.output-directory }}
+          if-no-files-found: error
+          retention-days: 7
