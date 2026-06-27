@@ -79,6 +79,19 @@ jobs:
           chmod +x ./test-image.sh
           ./test-image.sh
 
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci-test
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Upload SBOM as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.spdx.json
+
       # Push to registry only on main branch (not PRs)
       - name: Push image to registry
         if: github.event_name != 'pull_request'
@@ -92,39 +105,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-# ── Job 2: SBOM Generation (Syft) ──────────────────────────────────────────────
-  sbom:
-    name: Generate SBOM (Syft)
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions: read
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Log in to ghcr.io
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Generate SBOM
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-          format: spdx-json
-          output-file: sbom.spdx.json
-
-      - name: Upload SBOM as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-${{ github.sha }}
-          path: sbom.spdx.json
 
 # ── Job 3: Build QEMU disk image with bootc-image-builder ────────────────────
 # This validates that bootc-image-builder can successfully convert the container
