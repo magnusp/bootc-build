@@ -78,7 +78,7 @@ jobs:
           file: ./Containerfile.${{ matrix.node_type }}
           platforms: linux/amd64
           push: true
-          tags: ${{ id.meta.outputs.tags }}
-          labels: ${{ id.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
