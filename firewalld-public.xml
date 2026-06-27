@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<zone>
+  <short>Public</short>
+  <description>For use in public areas. You do not trust the other computers on networks to not harm your computer. Only selected incoming connections are accepted.</description>
+  <service name="ssh"/>
+  <service name="dhcpv6-client"/>
+  <!-- Kubernetes Control Plane & Worker Ports -->
+  <port port="6443" protocol="tcp"/> <!-- Kubernetes API Server -->
+  <port port="2379-2380" protocol="tcp"/> <!-- etcd peer & client -->
+  <port port="10250" protocol="tcp"/> <!-- Kubelet API -->
+  <port port="10256" protocol="tcp"/> <!-- Kube-Proxy / Cilium Health check -->
+  <port port="30000-32767" protocol="tcp"/> <!-- Kubernetes NodePort services -->
+  <!-- Cilium CNI Ports -->
+  <port port="8472" protocol="udp"/> <!-- Cilium VXLAN Overlay tunnel -->
+  <port port="4240" protocol="tcp"/> <!-- Cilium Agent cluster health checks -->
+  <forward/>
+</zone>

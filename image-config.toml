@@ -1,0 +1,9 @@
+# bootc-image-builder config
+# Provides a default admin user with sudo for testing the booted QEMU image.
+# In production, replace the SSH key or inject via Ignition/cloud-init.
+
+[[customizations.user]]
+name = "admin"
+groups = ["wheel"]
+# Password hash for "changeme" – CHANGE before use in production
+password = "$6$rounds=4096$saltsaltsalt$1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ./"
