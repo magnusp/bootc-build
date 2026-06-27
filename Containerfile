@@ -75,15 +75,21 @@ COPY k8s-modules.conf   /etc/modules-load.d/99-kubernetes.conf
 COPY firewalld-public.xml /etc/firewalld/zones/public.xml
 RUN systemctl enable firewalld.service
 
-# ── 8. Persistent state directories ──────────────────────────────────────────
+# ── 8. Persistent state directories via systemd-tmpfiles ────────────────────
+COPY kubernetes-tmpfiles.conf /usr/lib/tmpfiles.d/kubernetes.conf
 RUN mkdir -p \
-        /var/lib/kubelet \
-        /var/lib/containerd \
-        /var/lib/cni \
         /opt/cni/bin \
         /etc/cni/net.d \
         /etc/kubernetes \
         /etc/containerd/certs.d
 
-# ── 9. Validate bootc image structure ────────────────────────────────────────
+# ── 9. Clean up transient build artifacts in /var ────────────────────────────
+RUN rm -rf \
+        /var/log/* \
+        /var/cache/dnf/* \
+        /var/cache/libdnf5/* \
+        /var/cache/ldconfig/aux-cache \
+        /var/lib/dnf/*
+
+# ── 10. Validate bootc image structure ───────────────────────────────────────
 RUN bootc container lint
