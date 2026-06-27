@@ -3,7 +3,7 @@ This document provides step-by-step instructions for booting the nodes on Proxmo
 
 ## Architecture Overview
 *   **Operating System**: openSUSE Tumbleweed Bootc (`registry.opensuse.org/opensuse/tumbleweed:latest`)
-*   **Nodes**: 3 physical/VM nodes, all acting as both control plane and worker nodes
+*   **Nodes**: 3 physical/VM nodes, all acting as unified nodes (both control plane and worker nodes)
 *   **Container Runtime**: `containerd` with systemd cgroups and `runc` OCI runtime
 *   **Networking / CNI**: `Cilium` (eBPF-based, no kube-proxy required if preferred)
 *   **Storage / CSI**: `democratic-csi` (using `local-hostpath` pointing to ZFS datasets on VMs or connecting via iSCSI)
@@ -11,23 +11,22 @@ This document provides step-by-step instructions for booting the nodes on Proxmo
 ---
 
 ## 1. Creating VM Disk Images via `bootc-image-builder`
-First, build the container images using `podman` or `docker`:
+First, build the unified container image using `podman` or `docker`:
 ```bash
-podman build -t local/k8s-control-plane:latest -f Containerfile.control-plane .
-podman build -t local/k8s-worker:latest -f Containerfile.worker .
+podman build -t local/k8s-node:latest .
 ```
 
-To convert these container images into `.qcow2` virtual disk images for Proxmox, use the `bootc-image-builder` utility:
+To convert the container image into a `.qcow2` virtual disk image for Proxmox, use the `bootc-image-builder` utility:
 ```bash
-# Generate QCOW2 image for Control Plane
+# Generate QCOW2 image
 podman run --rm -it --privileged \
   -v ./output:/output \
   -v /var/lib/containers:/var/lib/containers \
   quay.io/centos-bootc/bootc-image-builder:latest \
   --type qcow2 \
-  local/k8s-control-plane:latest
+  local/k8s-node:latest
 ```
-Copy the resulting `.qcow2` files to your Proxmox VE hypervisor and import them using `qm importdisk`.
+Copy the resulting `.qcow2` file to your Proxmox VE hypervisor and import it using `qm importdisk`.
 
 ---
 
@@ -50,12 +49,7 @@ This approach passes a ZFS Volume (zvol) block device directly into the VM. Virt
    *Note:* Using `discard=on` enables TRIM support which allows the VM to release unused blocks back to the host ZFS pool. `iothread=1` isolates I/O processing onto a dedicated CPU thread.
 
 3. **Partition & Format inside VM**:
-   Once booted, the disk appears as `/dev/sdb`. You can format it and let `/etc/systemd/system/var-lib-democratic--csi.mount` handle the mount target `/var/lib/democratic-csi`.
-
-### Method B: Directory Sharing via VirtIO-FS (Low Latency File sharing)
-If you want to map a folder dataset directly without block layers:
-1. On the Proxmox Host, add a VirtFS/9p directory mount or setup NFS exports locally targeting the VM network.
-2. If using raw directory mapping, ensure you append `args: -object memory-backend-file,id=mem,size=16G,mem-path=/dev/shm,share=on -numa node,memdev=mem` to the VM config in `/etc/pve/qemu-server/101.conf` and mount via VirtIO-FS.
+   Once booted, the disk appears as `/dev/sdb`. You can format it and mount it under `/var/lib/democratic-csi` for storage.
 
 ---
 
@@ -94,7 +88,7 @@ sudo kubeadm init --config kubeadm-config.yaml --upload-certs
 Save the `kubeadm join` commands printed at the end of the output (one for control-plane join, one for workers).
 
 ### Step 3.2: Join the Remaining Nodes (node-2 and node-3)
-Join the next two nodes as **control planes** using the control plane join token:
+Join the next two nodes as **control planes** using the control-plane join token:
 ```bash
 sudo kubeadm join k8s-api.homelab.local:6443 --token <token> \
   --discovery-token-ca-cert-hash sha256:<hash> \
