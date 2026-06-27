@@ -86,10 +86,11 @@ RUN mkdir -p \
 # ── 9. Clean up transient build artifacts in /var ────────────────────────────
 RUN rm -rf \
         /var/log/* \
-        /var/cache/dnf/* \
-        /var/cache/libdnf5/* \
+        /var/cache/dnf \
+        /var/cache/libdnf5 \
         /var/cache/ldconfig/aux-cache \
-        /var/lib/dnf/*
+        /var/lib/dnf \
+        /var/lib/iscsi
 
 # ── 10. Validate bootc image structure ───────────────────────────────────────
 RUN bootc container lint
