@@ -22,7 +22,7 @@ EOF
 # ── 2. System packages ────────────────────────────────────────────────────────
 # containerd and runc come from the Fedora repos (no Docker repo needed)
 # kubernetes-cni provides CNI plugin binaries to /opt/cni/bin
-RUN dnf install -y \
+RUN dnf install -y --skip-unavailable \
         containerd \
         runc \
         kubelet \
@@ -37,7 +37,7 @@ RUN dnf install -y \
         conntrack-tools \
         ethtool \
         nfs-utils \
-        open-iscsi \
+        iscsi-initiator-utils \
         cryptsetup \
         lvm2 \
         tar \
